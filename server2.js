@@ -6,25 +6,34 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const http = require('http');
 const fetch = require('node-fetch'); // Instale: npm install node-fetch@2
-const path = require('path'); // [NOVO] Necessário para caminhos de arquivos
+const path = require('path'); 
 
+// Carrega as variáveis do arquivo .env
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ===== DADOS MERCADO PAGO =====
-const MERCADO_PAGO_ACCESS_TOKEN = 'APP_USR-8089215665209853-120909-01511fb41a354b6ed768b0ba178a02c0-1981576535';
+// ===== DADOS MERCADO PAGO (Via .env) =====
+const MERCADO_PAGO_ACCESS_TOKEN = process.env.MERCADO_PAGO_ACCESS_TOKEN;
 const MP_API_BASE = 'https://api.mercadopago.com';
+
+// URL base do seu site (para Webhooks). Se não estiver no .env, usa localhost como fallback (mas webhook precisa de https real)
+const BASE_URL = process.env.BASE_URL || 'https://seusite.com'; 
+
+// Verificação simples para garantir que o token foi carregado
+if (!MERCADO_PAGO_ACCESS_TOKEN) {
+    console.error('⚠️  ERRO CRÍTICO: MERCADO_PAGO_ACCESS_TOKEN não encontrado no arquivo .env!');
+}
 
 // --- MIDDLEWARES ---
 app.use(cors());
 app.use(bodyParser.json());
 
-// [NOVO] Configura a pasta atual para servir arquivos estáticos (CSS, JS, Imagens)
+// Configura a pasta atual para servir arquivos estáticos (CSS, JS, Imagens)
 app.use(express.static(path.join(__dirname)));
 
-// [NOVO] Servir arquivos específicos de cada pasta
+// Servir arquivos específicos de cada pasta
 app.use('/controle-dados', express.static(path.join(__dirname, 'controle-dados')));
 app.use('/dashboard', express.static(path.join(__dirname, 'dashboard')));
 app.use('/imgs', express.static(path.join(__dirname, 'imgs')));
@@ -32,12 +41,12 @@ app.use('/login', express.static(path.join(__dirname, 'login')));
 app.use('/usuário', express.static(path.join(__dirname, 'usuário')));
 app.use('/backend', express.static(path.join(__dirname, 'backend')));
 
-// [NOVO] Rota Principal: Abre o site (index.html) ao acessar http://localhost:3000/
+// Rota Principal: Abre o site (index.html) ao acessar a raiz
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// [NOVO] Rotas específicas para páginas HTML de cada pasta
+// Rotas específicas para páginas HTML de cada pasta
 app.get('/login/index.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'login', 'index.html'));
 });
@@ -73,6 +82,10 @@ app.post('/api/deposit/create', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Valor inválido.' });
         }
 
+        if (!MERCADO_PAGO_ACCESS_TOKEN) {
+            return res.status(500).json({ success: false, message: 'Erro de configuração no servidor (Token ausente).' });
+        }
+
         const paymentData = {
             transaction_amount: parseFloat(amount),
             description: `Depósito SLICED - ${firstName} ${lastName}`,
@@ -82,7 +95,8 @@ app.post('/api/deposit/create', async (req, res) => {
                 first_name: firstName || 'Usuario',
                 last_name: lastName || userId
             },
-            notification_url: `https://seusite.com/api/webhook/mercadopago`, 
+            // Usa a variável BASE_URL definida acima (vinda do .env)
+            notification_url: `${BASE_URL}/api/webhook/mercadopago`, 
             metadata: {
                 user_id: userId
             }
@@ -161,6 +175,10 @@ app.get('/api/user/:uid/balance', (req, res) => {
 // ==================================================================
 app.post('/api/webhook/mercadopago', (req, res) => {
     const { type, data } = req.body;
+    
+    // O Mercado Pago envia o webhook. Aqui você deve validar o pagamento depois.
+    // Ex: Se type === 'payment', consultar a API para ver se status === 'approved'
+    
     console.log(`🔔 Webhook MP: ${type} - ID: ${data?.id}`);
     res.status(200).send('OK');
 });
@@ -170,18 +188,16 @@ server.listen(PORT, () => {
     console.log(`=================================================`);
     console.log(`🚀 SERVER 2 RODANDO NA PORTA ${PORT}`);
     console.log(`=================================================`);
+    console.log(`🔑 Token MP Carregado: ${MERCADO_PAGO_ACCESS_TOKEN ? 'SIM ✅' : 'NÃO ❌'}`);
+    console.log(`🌐 Webhook Base URL: ${BASE_URL}`);
+    console.log(`=================================================`);
     console.log(`🏠 SITE PRINCIPAL: http://localhost:${PORT}`);
     console.log(`📁 PASTAS DISPONÍVEIS:`);
     console.log(`   📂 Login: http://localhost:${PORT}/login/`);
     console.log(`   📂 Dashboard: http://localhost:${PORT}/dashboard/`);
-    console.log(`   📂 Controle de Dados: http://localhost:${PORT}/controle-dados/`);
-    console.log(`   📂 Usuário: http://localhost:${PORT}/usuário/`);
-    console.log(`   📂 Imagens: http://localhost:${PORT}/imgs/`);
-    console.log(`   📂 Backend: http://localhost:${PORT}/backend/`);
     console.log(`=================================================`);
     console.log(`📡 APIs DISPONÍVEIS:`);
     console.log(`   💰 PIX: http://localhost:${PORT}/api/deposit/create`);
     console.log(`   💸 Saque: http://localhost:${PORT}/api/withdraw/request`);
-    console.log(`   💵 Saldo: http://localhost:${PORT}/api/user/:uid/balance`);
     console.log(`=================================================`);
 });
